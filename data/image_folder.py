@@ -9,11 +9,14 @@ import torch.utils.data as data
 from PIL import Image
 import os
 import os.path
+import re
+
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
     '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP',
 ]
+PATTERN = re.compile(r".*?([0-9]+)\.(jpg|JPG|jpeg|JPEG|png|PNG|ppm|PPM|bmp|BMP)$")
 
 
 def is_image_file(filename):
@@ -29,6 +32,20 @@ def make_dataset(dir, max_dataset_size=float("inf")):
             if is_image_file(fname):
                 path = os.path.join(root, fname)
                 images.append(path)
+    return images[:min(max_dataset_size, len(images))]
+
+
+def make_numbering_dataset(dir, max_dataset_size=float("inf")):
+    images = []
+    assert os.path.isdir(dir), '%s is not a valid directory' % dir
+
+    for root, _, fnames in sorted(os.walk(dir)):
+        for fname in fnames:
+            m = PATTERN.match(fname)
+            if m is not None:
+                idx = int(m.group(1))
+                path = os.path.join(root, fname)
+                images.append((idx, path))
     return images[:min(max_dataset_size, len(images))]
 
 

@@ -1,6 +1,8 @@
 import torch
+import numpy as np
 from .base_model import BaseModel
 from . import networks
+from AttnGAN.code.model import RNN_ENCODER
 
 
 class Pix2PixModel(BaseModel):
@@ -43,6 +45,8 @@ class Pix2PixModel(BaseModel):
             opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
         BaseModel.__init__(self, opt)
+        self.batch_size = opt.batch_size
+        self.img_size = opt.crop_size
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
@@ -53,6 +57,14 @@ class Pix2PixModel(BaseModel):
         else:  # during test time, only load G
             self.model_names = ['G']
         # define networks (both generator and discriminator)
+        self.text_encoder = RNN_ENCODER(opt.text_words_num, nhidden=opt.text_embedding_dim).to(self.device)
+        state_dict = torch.load(opt.text_encoder, map_location=lambda storage, loc: storage)
+        self.text_encoder.load_state_dict(state_dict)
+        for p in self.text_encoder.parameters():
+            p.requires_grad = False
+        print('Load text encoder from:', opt.text_encoder)
+        self.text_encoder.eval()
+
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
 
@@ -79,22 +91,30 @@ class Pix2PixModel(BaseModel):
         The option 'direction' can be used to swap images in domain A and domain B.
         """
         AtoB = self.opt.direction == 'AtoB'
-        self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'].to(self.device)
-        self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        self.caption_len, sort_idx = input["caption_len"].sort(descending=True)
+        self.real_A = input['A' if AtoB else 'B'][sort_idx].to(self.device)
+        self.real_B = input['B' if AtoB else 'A'][sort_idx].to(self.device)
+        self.caption = input["caption"][sort_idx].to(self.device)
+        self.image_paths = list(np.array(input['A_paths' if AtoB else 'B_paths'])[sort_idx])
+
+        # Encode text
+        hidden = self.text_encoder.init_hidden(self.batch_size)
+        _, self.sent_emb = self.text_encoder(self.caption, self.caption_len, hidden)  # sent_emb: [batch_size(1), sent_dim(128)]
+        self.tiled_sentence = self.sent_emb.unsqueeze(2).unsqueeze(3).repeat(1, 1, self.img_size, self.img_size)
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG(self.real_A)  # G(A)
+        real_A = torch.cat((self.real_A, self.tiled_sentence), 1)  # real_A: [batch_size(1), 3+sent_dim(128), crop_size(256), crop_size(256)]
+        self.fake_B = self.netG(real_A)  # G(A)
 
     def backward_D(self):
         """Calculate GAN loss for the discriminator"""
         # Fake; stop backprop to the generator by detaching fake_B
-        fake_AB = torch.cat((self.real_A, self.fake_B), 1)  # we use conditional GANs; we need to feed both input and output to the discriminator
+        fake_AB = torch.cat((self.real_A, self.fake_B, self.tiled_sentence), 1)  # we use conditional GANs; we need to feed both input and output to the discriminator
         pred_fake = self.netD(fake_AB.detach())
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
         # Real
-        real_AB = torch.cat((self.real_A, self.real_B), 1)
+        real_AB = torch.cat((self.real_A, self.real_B, self.tiled_sentence), 1)
         pred_real = self.netD(real_AB)
         self.loss_D_real = self.criterionGAN(pred_real, True)
         # combine loss and calculate gradients
@@ -104,7 +124,7 @@ class Pix2PixModel(BaseModel):
     def backward_G(self):
         """Calculate GAN and L1 loss for the generator"""
         # First, G(A) should fake the discriminator
-        fake_AB = torch.cat((self.real_A, self.fake_B), 1)
+        fake_AB = torch.cat((self.real_A, self.fake_B, self.tiled_sentence), 1)
         pred_fake = self.netD(fake_AB)
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
         # Second, G(A) = B
