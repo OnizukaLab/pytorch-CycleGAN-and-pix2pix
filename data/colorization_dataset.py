@@ -96,7 +96,7 @@ class ColorizationDataset(BaseDataset):
         A = lab_t[[0], ...] / 50.0 - 1.0
         B = lab_t[[1, 2], ...] / 110.0
 
-        caption_idx = self.captions_per_image * index + random.randint(0, self.captions_per_image)
+        caption_idx = self.captions_per_image * index + random.randint(0, self.captions_per_image-1)
         caption, caption_len = self.get_caption(caption_idx)
         return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path, "caption": caption, "caption_len": caption_len}
 
