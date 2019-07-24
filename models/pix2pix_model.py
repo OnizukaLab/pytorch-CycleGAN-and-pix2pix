@@ -92,10 +92,10 @@ class Pix2PixModel(BaseModel):
         """
         AtoB = self.opt.direction == 'AtoB'
         self.caption_len, sort_idx = input["caption_len"].sort(descending=True)
-        self.real_A = input['A' if AtoB else 'B'][sort_idx].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'][sort_idx].to(self.device)
-        self.caption = input["caption"][sort_idx].to(self.device)
-        self.image_paths = list(np.array(input['A_paths' if AtoB else 'B_paths'])[sort_idx])
+        self.real_A = input['A' if AtoB else 'B'][[sort_idx]].to(self.device)
+        self.real_B = input['B' if AtoB else 'A'][[sort_idx]].to(self.device)
+        self.caption = input["caption"][[sort_idx]].to(self.device)
+        self.image_paths = list(np.array(input['A_paths' if AtoB else 'B_paths'])[[sort_idx]])
 
         # Encode text
         hidden = self.text_encoder.init_hidden(self.batch_size)
