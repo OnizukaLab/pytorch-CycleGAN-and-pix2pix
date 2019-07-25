@@ -19,6 +19,14 @@ class BaseOptions():
 
     def initialize(self, parser):
         """Define the common options that are used in both training and test."""
+        # my options
+        parser.add_argument("--text_embedding_dim", type=int, default=256)
+        parser.add_argument("--text_encoder", type=str, default='/opt/project/AttnGAN/output/birds_DAMSM_2019_07_17_09_47_28/Model/text_encoder550.pth')
+        parser.add_argument("--captions_per_image", type=int, default=10)
+        parser.add_argument("--text_words_num", type=int, default=5450)
+        parser.add_argument("--captions", type=str, default='/opt/project/AttnGAN/data/birds/captions.pickle')
+        parser.add_argument("--attn_cfg_file", type=str, default='/opt/project/AttnGAN/code/cfg/bird_attn2.yml')
+
         # basic parameters
         parser.add_argument('--dataroot', required=True, help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
