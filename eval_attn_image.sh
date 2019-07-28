@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Prepare AttnGAN image for pix2pix
-python preprocess_attn_image.py\
+python preprocess_attnimage.py\
  --attn_data ../AttnGAN/output/birds_attn2_2019_07_25_10_29_58/Model/netG_epoch_550/valid/single
 
 # Colorization
