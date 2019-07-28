@@ -14,7 +14,8 @@ if __name__ == '__main__':
                         default="../AttnGAN/output/birds_attn2_2019_07_25_10_29_58/Model/netG_epoch_600/valid/single")
     parser.add_argument("--output", type=str,
                         default="./datasets/bird/attn")
-    parser.add_argument("--captions_per_image", type=int, default=10)
+    parser.add_argument("--captions_per_image", type=int,
+                        default=10)
     opt = parser.parse_args()
 
     with open(opt.filename_info, "rb") as f:
@@ -23,7 +24,7 @@ if __name__ == '__main__':
 
     if not os.path.isdir(opt.output):
         print('Make a new folder: ', opt.output)
-        mkdir_p(folder)
+        mkdir_p(opt.output)
 
     serialized_index = 0
     for f_info in filename_info:
@@ -32,6 +33,13 @@ if __name__ == '__main__':
             assert os.path.isfile(filename), "ERROR: invelid file name {}".format(filename)
             output = os.path.join(opt.output, "{}.jpg".format(serialized_index))
             serialized_index += 1
+
+            # print progress
+            if serialized_index % 1000 == 0:
+                print("step:", serialized_index)
+
             exit_code = subprocess.check_call(["cp", filename, output])
             assert exit_code == 0,\
                 "ERROR: cp process failed. code({}). cp from {}, to {}".format(exit_code, filename, output)
+    print("Finish: process {} images".format(serialized_index))
+
