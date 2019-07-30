@@ -3,15 +3,14 @@ ATTN_PATH=${1:-../AttnGAN/output/birds_attn2_2019_07_25_10_29_58/Model/netG_epoc
 PHASE=${2:-attn}
 
 # Prepare AttnGAN image for pix2pix
-python preprocess_attnimage.py\
- --attn_data ${ATTN_PATH}
+python preprocess_attnimage.py --attn_data ${ATTN_PATH} --output ./datasets/bird/${PHASE}
 
 # Colorization
 python test.py --dataroot ./datasets/bird --name color_pix2pix --model colorization\
  --phase ${PHASE} --name color_pix2pix --gpu_id 0 --num_test 30000
 
 # Prepare for fid_score
-mkdir ./datasets/bird/${PHASE}/fake_images
+mkdir /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_latest/fake_images
 for i in `seq 0 9`
 do
  cp /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_latest/images/${i}*_fake*\
