@@ -21,4 +21,4 @@ rm -rf /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_
 # Calculate FID
 cd /opt/pytorch-fid/
 python fid_score.py /opt/project/pytorch-CycleGAN-and-pix2pix/datasets/bird/test\
-# /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_latest/fake_images -c 0
+ /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_latest/fake_images -c 0
