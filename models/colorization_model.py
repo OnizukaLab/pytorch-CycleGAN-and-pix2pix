@@ -57,9 +57,17 @@ class ColorizationModel(Pix2PixModel):
         AB2 = AB * 110.0
         L2 = (L + 1.0) * 50.0
         Lab = torch.cat([L2, AB2], dim=1)
-        Lab = Lab[0].data.cpu().float().numpy()
-        Lab = np.transpose(Lab.astype(np.float64), (1, 2, 0))
-        rgb = color.lab2rgb(Lab) * 255
+        if len(Lab) == 1:
+            Lab = Lab[0].data.cpu().float().numpy()
+            Lab = np.transpose(Lab.astype(np.float64), (1, 2, 0))
+            rgb = color.lab2rgb(Lab) * 255
+        else:
+            rgb = []
+            for one_Lab in Lab:
+                one_Lab = one_Lab.data.cpu().float().numpy()
+                one_Lab = np.transpose(one_Lab.astype(np.float64), (1, 2, 0))
+                one_rgb = color.lab2rgb(one_Lab) * 255
+                rgb.append(one_rgb)
         return rgb
 
     def compute_visuals(self):

@@ -32,13 +32,13 @@ from data import create_dataset
 from models import create_model
 from util.visualizer import save_caption_images
 from util import html
+from time import time
 
 
 if __name__ == '__main__':
     opt = TestOptions().parse()  # get test options
     # hard-code some parameters for test
     opt.num_threads = 0   # test code only supports num_threads = 1
-    opt.batch_size = 1    # test code only supports batch_size = 1
     opt.no_flip = True    # no flip; comment this line if results on flipped images are needed.
     opt.display_id = -1   # no visdom display; the test code saves the results to a HTML file.
     opt.captions_per_image = 1
@@ -54,17 +54,25 @@ if __name__ == '__main__':
     # For [CycleGAN]: It should not affect CycleGAN as CycleGAN uses instancenorm without dropout.
     if opt.eval:
         model.eval()
+    start = time()
     for i, data in enumerate(dataset):
-        if i >= opt.num_test:  # only apply our model to opt.num_test images.
+        if i * opt.batch_size >= opt.num_test:  # only apply our model to opt.num_test images.
             break
         model.set_input(data)  # unpack data from data loader
         model.test()           # run inference
         visuals = model.get_current_visuals()  # get image results
         img_path = model.get_image_paths()     # get image paths
-        str_caption = " ".join(
-            [dataset.dataset.ixtoword[cap] for cap in model.caption[0].tolist() if cap != system_word_ix])
+        if len(img_path) != opt.batch_size:
+            img_path = ["".join(img_path)]
+        str_caption = []
+        for caption in model.caption:
+            one_str_caption = " ".join(
+                [dataset.dataset.ixtoword[cap] for cap in caption.tolist() if cap != system_word_ix])
+            str_caption.append(one_str_caption)
         if i % 5 == 0:  # save images to an HTML file
-            print('processing (%04d)-th image... %s' % (i, img_path))
+            print('processing (%04d)-th image... %s' % (i, img_path[0]))
+            print("{:.2f}".format(time() - start), "seq. for 5 iter.")
+            start = time()
         save_caption_images(webpage, visuals, img_path, str_caption,
                             aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
     webpage.save()  # save the HTML

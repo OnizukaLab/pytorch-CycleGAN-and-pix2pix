@@ -62,28 +62,54 @@ def save_caption_images(webpage, visuals, image_path, caption, aspect_ratio=1.0,
 
     This function will save images stored in 'visuals' to the HTML file specified by 'webpage'.
     """
-    image_dir = webpage.get_image_dir()
-    short_path = ntpath.basename(image_path[0])
-    name = os.path.splitext(short_path)[0]
+    batch_size = len(caption)
+    if batch_size == 1:
+        image_dir = webpage.get_image_dir()
+        short_path = ntpath.basename(image_path[0])
+        name = os.path.splitext(short_path)[0]
 
-    webpage.add_header("{}: {}".format(name, caption))
-    ims, txts, links = [], [], []
+        webpage.add_header("{}: {}".format(name, caption[0]))
+        ims, txts, links = [], [], []
 
-    for label, im_data in visuals.items():
-        im = util.tensor2im(im_data)
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(image_dir, image_name)
-        h, w, _ = im.shape
-        if aspect_ratio > 1.0:
-            im = imresize(im, (h, int(w * aspect_ratio)), interp='bicubic')
-        if aspect_ratio < 1.0:
-            im = imresize(im, (int(h / aspect_ratio), w), interp='bicubic')
-        util.save_image(im, save_path)
+        for label, im_data in visuals.items():
+            im = util.tensor2im(im_data)
+            image_name = '%s_%s.png' % (name, label)
+            save_path = os.path.join(image_dir, image_name)
+            h, w, _ = im.shape
+            if aspect_ratio > 1.0:
+                im = imresize(im, (h, int(w * aspect_ratio)), interp='bicubic')
+            if aspect_ratio < 1.0:
+                im = imresize(im, (int(h / aspect_ratio), w), interp='bicubic')
+            util.save_image(im, save_path)
 
-        ims.append(image_name)
-        txts.append(label)
-        links.append(image_name)
-    webpage.add_images(ims, txts, links, width=width)
+            ims.append(image_name)
+            txts.append(label)
+            links.append(image_name)
+        webpage.add_images(ims, txts, links, width=width)
+    else:
+        for idx in range(batch_size):
+            image_dir = webpage.get_image_dir()
+            short_path = ntpath.basename(image_path[idx])
+            name = os.path.splitext(short_path)[0]
+
+            webpage.add_header("{}: {}".format(name, caption[idx]))
+            ims, txts, links = [], [], []
+
+            for label, im_data in visuals.items():
+                im = util.tensor2im(im_data[idx])
+                image_name = '%s_%s.png' % (name, label)
+                save_path = os.path.join(image_dir, image_name)
+                h, w, _ = im.shape
+                if aspect_ratio > 1.0:
+                    im = imresize(im, (h, int(w * aspect_ratio)), interp='bicubic')
+                if aspect_ratio < 1.0:
+                    im = imresize(im, (int(h / aspect_ratio), w), interp='bicubic')
+                util.save_image(im, save_path)
+
+                ims.append(image_name)
+                txts.append(label)
+                links.append(image_name)
+            webpage.add_images(ims, txts, links, width=width)
 
 
 class Visualizer():

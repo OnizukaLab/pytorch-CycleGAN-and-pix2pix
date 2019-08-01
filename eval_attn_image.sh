@@ -7,7 +7,7 @@ python preprocess_attnimage.py --attn_data ${ATTN_PATH} --output ./datasets/bird
 
 # Colorization
 python test.py --dataroot ./datasets/bird --name color_pix2pix --model colorization\
- --phase ${PHASE} --name color_pix2pix --gpu_id 0 --num_test 30000
+ --phase ${PHASE} --gpu_id 0 --num_test 30000
 
 # Prepare for fid_score
 mkdir /opt/project/pytorch-CycleGAN-and-pix2pix/results/color_pix2pix/${PHASE}_latest/fake_images
