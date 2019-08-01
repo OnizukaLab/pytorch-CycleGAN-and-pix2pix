@@ -1,6 +1,9 @@
 import os.path
+import pickle
+import random
 from data.base_dataset import BaseDataset, get_params, get_transform
 from data.image_folder import make_dataset
+import numpy as np
 from PIL import Image
 
 
@@ -23,6 +26,37 @@ class AlignedDataset(BaseDataset):
         assert(self.opt.load_size >= self.opt.crop_size)   # crop_size should be smaller than the size of loaded image
         self.input_nc = self.opt.output_nc if self.opt.direction == 'BtoA' else self.opt.input_nc
         self.output_nc = self.opt.input_nc if self.opt.direction == 'BtoA' else self.opt.output_nc
+
+        with open(opt.captions, 'rb') as f:
+            x = pickle.load(f)
+            train_captions, test_captions = x[0], x[1]
+            self.captions = train_captions if opt.phase == "train" else test_captions
+            self.ixtoword, self.wordtoix = x[2], x[3]
+            del x, train_captions, test_captions
+            self.n_words = len(self.ixtoword)
+            print('Load from: ', opt.captions)
+        self.captions_per_image = opt.captions_per_image
+        self.text_words_num = opt.text_words_num
+
+    def get_caption(self, sent_ix):
+        # a list of indices for a sentence
+        sent_caption = np.asarray(self.captions[sent_ix]).astype('int64')
+        if (sent_caption == 0).sum() > 0:
+            print('ERROR: do not need END (0) token', sent_caption)
+        num_words = len(sent_caption)
+        # pad with 0s (i.e., '<end>')
+        x = np.zeros(self.text_words_num, dtype='int64')
+        x_len = num_words
+        if num_words <= self.text_words_num:
+            x[:num_words] = sent_caption
+        else:
+            ix = list(np.arange(num_words))  # 1, 2, 3,..., maxNum
+            np.random.shuffle(ix)
+            ix = ix[:self.text_words_num]
+            ix = np.sort(ix)
+            x = sent_caption[ix]
+            x_len = self.text_words_num
+        return x, x_len
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -53,7 +87,10 @@ class AlignedDataset(BaseDataset):
         A = A_transform(A)
         B = B_transform(B)
 
-        return {'A': A, 'B': B, 'A_paths': AB_path, 'B_paths': AB_path}
+        caption_idx = self.captions_per_image * index + random.randint(0, self.captions_per_image - 1)
+        caption, caption_len = self.get_caption(caption_idx)
+        return {'A': A, 'B': B, 'A_paths': AB_path, 'B_paths': AB_path,
+                "caption": caption, "caption_len": caption_len}
 
     def __len__(self):
         """Return the total number of images in the dataset."""
