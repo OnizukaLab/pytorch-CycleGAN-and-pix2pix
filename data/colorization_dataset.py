@@ -72,7 +72,6 @@ class ColorizationDataset(BaseDataset):
             ix = np.sort(ix)
             x = sent_caption[ix]
             x_len = self.text_words_num
-        # TODO: Val x is sequence first. Maybe batch first is better.
         return x, x_len
 
     def __getitem__(self, index):
@@ -98,7 +97,8 @@ class ColorizationDataset(BaseDataset):
 
         caption_idx = self.captions_per_image * index + random.randint(0, self.captions_per_image-1)
         caption, caption_len = self.get_caption(caption_idx)
-        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path, "caption": caption, "caption_len": caption_len}
+        return {'A': A, 'B': B, 'A_paths': path, 'B_paths': path,
+                "caption": caption, "caption_len": caption_len}
 
     def __len__(self):
         """Return the total number of images in the dataset."""
