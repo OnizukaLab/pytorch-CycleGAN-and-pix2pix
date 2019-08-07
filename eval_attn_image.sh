@@ -3,12 +3,13 @@ ATTN_PATH=${1:-../AttnGAN/output/birds_attn2_2019_07_25_10_29_58/Model/netG_epoc
 PHASE=${2:-attn}
 NAME=${3:-color_pix2pix}
 MODEL=${4:-colorization}
+DATANAME=${5:-birds}
 
 # Prepare AttnGAN image for pix2pix
 python preprocess_attnimage.py --attn_data ${ATTN_PATH} --output ./datasets/bird/${PHASE}
 
 # Colorization
-python test.py --dataroot ./datasets/bird --model ${MODEL}\
+python test.py --dataroot ./datasets/${DATANAME} --model ${MODEL}\
  --phase ${PHASE} --name ${NAME} --gpu_id 0 --num_test 30000
 
 # Prepare for fid_score
