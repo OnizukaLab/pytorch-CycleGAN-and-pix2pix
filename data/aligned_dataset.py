@@ -2,7 +2,7 @@ import os.path
 import pickle
 import random
 from data.base_dataset import BaseDataset, get_params, get_transform
-from data.image_folder import make_dataset
+from data.image_folder import make_numbering_dataset
 import numpy as np
 from PIL import Image
 
@@ -22,7 +22,8 @@ class AlignedDataset(BaseDataset):
         """
         BaseDataset.__init__(self, opt)
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)  # get the image directory
-        self.AB_paths = sorted(make_dataset(self.dir_AB, opt.max_dataset_size))  # get image paths
+        self.AB_paths = [
+            e[1] for e in sorted(make_numbering_dataset(self.dir_AB, opt.max_dataset_size), key=lambda idx: idx[0])]
         assert(self.opt.load_size >= self.opt.crop_size)   # crop_size should be smaller than the size of loaded image
         self.input_nc = self.opt.output_nc if self.opt.direction == 'BtoA' else self.opt.input_nc
         self.output_nc = self.opt.input_nc if self.opt.direction == 'BtoA' else self.opt.output_nc
