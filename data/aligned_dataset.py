@@ -76,9 +76,13 @@ class AlignedDataset(BaseDataset):
         AB = Image.open(AB_path).convert('RGB')
         # split AB image into A and B
         w, h = AB.size
-        w2 = int(w / 2)
-        A = AB.crop((0, 0, w2, h))
-        B = AB.crop((w2, 0, w, h))
+        if w > h:
+            w2 = int(w / 2)
+            A = AB.crop((0, 0, w2, h))
+            B = AB.crop((w2, 0, w, h))
+        else:
+            A = AB
+            B = AB
 
         # apply the same transform to both A and B
         transform_params = get_params(self.opt, A.size)
