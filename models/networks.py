@@ -117,7 +117,8 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], sent_dim=256):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal',
+             init_gain=0.02, gpu_ids=[], sent_dim=256, use_s=False, use_w=False):
     """Create a generator
 
     Parameters:
@@ -146,22 +147,23 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     """
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
-    input_nc += sent_dim  # image-channel + sentence-dim
+    if use_s:
+        input_nc += sent_dim  # image-channel + sentence-dim
 
     if netG == 'resnet_9blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, word_dim=sent_dim)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, word_dim=sent_dim, use_w=use_w)
     elif netG == 'resnet_6blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, word_dim=sent_dim)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, word_dim=sent_dim, use_w=use_w)
     elif netG == 'unet_128':
-        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim)
+        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim, use_w=use_w)
     elif netG == 'unet_256':
-        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim)
+        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim, use_w=use_w)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], sent_dim=256):
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], sent_dim=256, use_s=False):
     """Create a discriminator
 
     Parameters:
@@ -193,7 +195,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
     """
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
-    input_nc += sent_dim  # image-channel + sentence-dim
+    if use_s:
+        input_nc += sent_dim  # image-channel + sentence-dim
 
     if netD == 'basic':  # default PatchGAN classifier
         net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer)
@@ -322,7 +325,7 @@ class ResnetGenerator(nn.Module):
     """
 
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False,
-                 n_blocks=6, padding_type='reflect', word_dim=256):
+                 n_blocks=6, padding_type='reflect', word_dim=256, use_w=False):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -346,7 +349,7 @@ class ResnetGenerator(nn.Module):
                  norm_layer(ngf),
                  nn.ReLU(True)]
         self.preprocess = nn.Sequential(*model)
-        self.outer_attn = AttnBlock(ngf, word_dim)
+        self.outer_attn = AttnBlock(ngf, word_dim) if use_w else lambda im, w: im
 
         model = []
         n_downsampling = 2
@@ -358,7 +361,7 @@ class ResnetGenerator(nn.Module):
         self.down_sample = nn.Sequential(*model)
 
         mult = 2 ** n_downsampling
-        self.inner_attn = AttnBlock(ngf * mult, word_dim)
+        self.inner_attn = AttnBlock(ngf * mult, word_dim) if use_w else lambda im, w: im
 
         model = []
         for i in range(n_blocks):       # add ResNet blocks
@@ -467,7 +470,7 @@ class ResnetBlock(nn.Module):
 class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
-    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, word_dim=256):
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, word_dim=256, use_w=False):
         """Construct a Unet generator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -502,8 +505,8 @@ class UnetSkipConnectionBlock(nn.Module):
         |-- downsampling -- |submodule| -- upsampling --|
     """
 
-    def __init__(self, outer_nc, inner_nc, input_nc=None, word_dim=256,
-                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False,):
+    def __init__(self, outer_nc, inner_nc, input_nc=None, word_dim=256, use_w=False,
+                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False):
         """Construct a Unet submodule with skip connections.
 
         Parameters:
@@ -559,7 +562,7 @@ class UnetSkipConnectionBlock(nn.Module):
             self.submodule = submodule
         else:
             self.submodule = None
-        self.attn = AttnBlock(outer_nc, word_dim)
+        self.attn = AttnBlock(outer_nc, word_dim) if use_w else lambda im, w: im
 
     def forward(self, x, word):
         if self.outermost:
