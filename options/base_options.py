@@ -21,6 +21,8 @@ class BaseOptions():
         """Define the common options that are used in both training and test."""
         # my options
         parser.add_argument("--text_embedding_dim", type=int, default=256)
+        parser.add_argument("--use_s", action='store_true', help="Concatenate sentence embedding to the input image")
+        parser.add_argument("--use_w", action='store_true', help="Pay attention to the input image based on word embeddings")
         parser.add_argument("--text_encoder", type=str, default='/opt/project/AttnGAN/output/birds_DAMSM_2019_07_17_09_47_28/Model/text_encoder550.pth')
         parser.add_argument("--captions_per_image", type=int, default=10)
         parser.add_argument("--text_words_num", type=int, default=5450)

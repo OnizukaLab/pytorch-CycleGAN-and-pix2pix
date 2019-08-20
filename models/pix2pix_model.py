@@ -66,11 +66,14 @@ class Pix2PixModel(BaseModel):
         self.text_encoder.eval()
 
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,
+                                      opt.text_embedding_dim, opt.use_s, opt.use_w)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-                                          opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+                                          opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids,
+                                          opt.text_embedding_dim, opt.use_s)
+        self.use_s = opt.use_s
 
         if self.isTrain:
             # define loss functions
@@ -99,13 +102,17 @@ class Pix2PixModel(BaseModel):
 
         # Encode text
         hidden = self.text_encoder.init_hidden(self.batch_size)
-        _, self.sent_emb = self.text_encoder(self.caption, self.caption_len, hidden)  # sent_emb: [batch_size(1), sent_dim(128)]
-        self.tiled_sentence = self.sent_emb.unsqueeze(2).unsqueeze(3).repeat(1, 1, self.img_size, self.img_size)
+        self.word_emb, self.sent_emb =\
+            self.text_encoder(self.caption, self.caption_len, hidden)  # sent_emb: [batch_size(1), sent_dim(128)]
+        if self.use_s:
+            self.tiled_sentence = self.sent_emb.unsqueeze(2).unsqueeze(3).repeat(1, 1, self.img_size, self.img_size)
+        else:
+            self.tiled_sentence = torch.Tensor().to(self.device)
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         real_A = torch.cat((self.real_A, self.tiled_sentence), 1)  # real_A: [batch_size(1), 3+sent_dim(128), crop_size(256), crop_size(256)]
-        self.fake_B = self.netG(real_A)  # G(A)
+        self.fake_B = self.netG(real_A, self.word_emb)  # G(A)
 
     def backward_D(self):
         """Calculate GAN loss for the discriminator"""
