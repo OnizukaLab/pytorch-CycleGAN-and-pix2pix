@@ -95,7 +95,7 @@ class Pix2PixModel(BaseModel):
         self.real_A = input['A' if AtoB else 'B'][[sort_idx]].to(self.device)
         self.real_B = input['B' if AtoB else 'A'][[sort_idx]].to(self.device)
         self.caption = input["caption"][[sort_idx]].to(self.device)
-        self.image_paths = list(np.array(input['A_paths' if AtoB else 'B_paths'])[[sort_idx]])
+        self.image_paths = list(np.array(input['A_paths' if AtoB else 'B_paths'])[[sort_idx.tolist()]])
 
         # Encode text
         hidden = self.text_encoder.init_hidden(self.batch_size)

@@ -2,7 +2,7 @@ import os.path
 import pickle
 import random
 from data.base_dataset import BaseDataset, get_params, get_transform
-from data.image_folder import make_dataset
+from data.image_folder import make_numbering_dataset
 import numpy as np
 from PIL import Image
 
@@ -22,7 +22,8 @@ class AlignedDataset(BaseDataset):
         """
         BaseDataset.__init__(self, opt)
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)  # get the image directory
-        self.AB_paths = sorted(make_dataset(self.dir_AB, opt.max_dataset_size))  # get image paths
+        self.AB_paths = [
+            e[1] for e in sorted(make_numbering_dataset(self.dir_AB, opt.max_dataset_size), key=lambda idx: idx[0])]
         assert(self.opt.load_size >= self.opt.crop_size)   # crop_size should be smaller than the size of loaded image
         self.input_nc = self.opt.output_nc if self.opt.direction == 'BtoA' else self.opt.input_nc
         self.output_nc = self.opt.input_nc if self.opt.direction == 'BtoA' else self.opt.output_nc
@@ -75,9 +76,13 @@ class AlignedDataset(BaseDataset):
         AB = Image.open(AB_path).convert('RGB')
         # split AB image into A and B
         w, h = AB.size
-        w2 = int(w / 2)
-        A = AB.crop((0, 0, w2, h))
-        B = AB.crop((w2, 0, w, h))
+        if w > h:
+            w2 = int(w / 2)
+            A = AB.crop((0, 0, w2, h))
+            B = AB.crop((w2, 0, w, h))
+        else:
+            A = AB
+            B = AB
 
         # apply the same transform to both A and B
         transform_params = get_params(self.opt, A.size)
