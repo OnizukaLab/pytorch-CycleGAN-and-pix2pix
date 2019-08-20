@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
+from AttnGAN.code.GlobalAttention import GlobalAttentionGeneral as ATT_NET
 
 
 ###############################################################################
@@ -148,13 +149,13 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     input_nc += sent_dim  # image-channel + sentence-dim
 
     if netG == 'resnet_9blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, word_dim=sent_dim)
     elif netG == 'resnet_6blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, word_dim=sent_dim)
     elif netG == 'unet_128':
-        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim)
     elif netG == 'unet_256':
-        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=sent_dim)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -320,7 +321,8 @@ class ResnetGenerator(nn.Module):
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False,
+                 n_blocks=6, padding_type='reflect', word_dim=256):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -343,18 +345,26 @@ class ResnetGenerator(nn.Module):
                  nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
                  norm_layer(ngf),
                  nn.ReLU(True)]
+        self.preprocess = nn.Sequential(*model)
+        self.outer_attn = AttnBlock(ngf, word_dim)
 
+        model = []
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
             mult = 2 ** i
             model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf * mult * 2),
                       nn.ReLU(True)]
+        self.down_sample = nn.Sequential(*model)
 
         mult = 2 ** n_downsampling
+        self.inner_attn = AttnBlock(ngf * mult, word_dim)
+
+        model = []
         for i in range(n_blocks):       # add ResNet blocks
 
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer,
+                                  use_dropout=use_dropout, use_bias=use_bias)]
 
         for i in range(n_downsampling):  # add upsampling layers
             mult = 2 ** (n_downsampling - i)
@@ -368,11 +378,30 @@ class ResnetGenerator(nn.Module):
         model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
         model += [nn.Tanh()]
 
-        self.model = nn.Sequential(*model)
+        self.up_sample = nn.Sequential(*model)
 
-    def forward(self, input):
+    def forward(self, img, word):
         """Standard forward"""
-        return self.model(input)
+        img_code = self.preprocess(img)
+        outer_c_code = self.outer_attn(img_code, word)
+        inner_h_code = self.down_sample(outer_c_code)
+        c_code = self.inner_attn(inner_h_code, word)
+        output = self.up_sample(c_code)
+        return output
+
+
+class AttnBlock(nn.Module):
+
+    def __init__(self, channel, word_dim):
+        super(AttnBlock, self).__init__()
+        self.attn = ATT_NET(channel, word_dim)
+        self.channel_compression = nn.Conv2d(2*channel, channel, 1)
+
+    def forward(self, h_code, word_embs):
+        c_code, _ = self.attn(h_code, word_embs)
+        h_c_code = torch.cat((h_code, c_code), 1)
+        output = self.channel_compression(h_c_code)
+        return output
 
 
 class ResnetBlock(nn.Module):
@@ -438,7 +467,7 @@ class ResnetBlock(nn.Module):
 class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
-    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, word_dim=256):
         """Construct a Unet generator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -453,18 +482,18 @@ class UnetGenerator(nn.Module):
         """
         super(UnetGenerator, self).__init__()
         # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
+        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True, word_dim=word_dim)  # add the innermost layer
         for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout, word_dim=word_dim)
         # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, word_dim=word_dim)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer, word_dim=word_dim)
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer, word_dim=word_dim)
+        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer, word_dim=word_dim)  # add the outermost layer
 
-    def forward(self, input):
+    def forward(self, img, word):
         """Standard forward"""
-        return self.model(input)
+        return self.model(img, word)
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -473,8 +502,8 @@ class UnetSkipConnectionBlock(nn.Module):
         |-- downsampling -- |submodule| -- upsampling --|
     """
 
-    def __init__(self, outer_nc, inner_nc, input_nc=None,
-                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, outer_nc, inner_nc, input_nc=None, word_dim=256,
+                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False,):
         """Construct a Unet submodule with skip connections.
 
         Parameters:
@@ -508,14 +537,12 @@ class UnetSkipConnectionBlock(nn.Module):
                                         padding=1)
             down = [downconv]
             up = [uprelu, upconv, nn.Tanh()]
-            model = down + [submodule] + up
         elif innermost:
             upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
             down = [downrelu, downconv]
             up = [uprelu, upconv, upnorm]
-            model = down + up
         else:
             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
                                         kernel_size=4, stride=2,
@@ -524,17 +551,30 @@ class UnetSkipConnectionBlock(nn.Module):
             up = [uprelu, upconv, upnorm]
 
             if use_dropout:
-                model = down + [submodule] + up + [nn.Dropout(0.5)]
-            else:
-                model = down + [submodule] + up
+                up.append(nn.Dropout(0.5))
 
-        self.model = nn.Sequential(*model)
+        self.down = nn.Sequential(*down)
+        self.up = nn.Sequential(*up)
+        if submodule is not None:
+            self.submodule = submodule
+        else:
+            self.submodule = None
+        self.attn = AttnBlock(outer_nc, word_dim)
 
-    def forward(self, x):
+    def forward(self, x, word):
         if self.outermost:
-            return self.model(x)
+            inner = self.down(x)
+            if self.submodule is not None:
+                inner = self.submodule(inner, word)
+            outer = self.up(inner)
+            return outer
         else:   # add skip connections
-            return torch.cat([x, self.model(x)], 1)
+            inner = self.down(x)
+            if self.submodule is not None:
+                inner = self.submodule(inner, word)
+            outer = self.up(inner)
+            attn_x = self.attn(x, word)
+            return torch.cat([attn_x, outer], 1)
 
 
 class NLayerDiscriminator(nn.Module):
